@@ -4,6 +4,7 @@ const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aw
 const s3 = require('../lib/minio');
 const authenticate = require('../middleware/authenticate');
 const Video = require('../models/Video');
+const transcodeQueue = require('../queue');
 
 const router = express.Router();
 
@@ -125,6 +126,19 @@ router.post('/:id/complete', authenticate, async(req,res) => {
 
         video.status = 'processing';
         await video.save();
+
+        await transcodeQueue.add('transcode',{
+            videoId: video._id.toString(),
+            bucket: process.env.MINIO_BUCKET_RAW,
+             key: `raw/${video._id}/original`,
+        },{
+            attempts: 3,
+            backoff: {
+                type: 'exponential',
+                delay: 5000,
+            },
+        });
+        
 
         return res.status(200).json({ message: 'Upload complete', videoId: video._id });
     } catch (error) {
